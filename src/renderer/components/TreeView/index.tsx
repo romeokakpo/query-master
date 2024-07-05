@@ -7,6 +7,7 @@ let GLOBAL_TREE_DRAG_ITEM: unknown;
 export interface TreeViewItemData<T> {
   id: string;
   text?: string;
+  subtitle?: string;
   icon?: ReactElement;
   data?: T;
   children?: TreeViewItemData<T>[];
@@ -14,7 +15,11 @@ export interface TreeViewItemData<T> {
 
 interface TreeViewCommonProps<T> {
   draggable?: boolean;
-  onDragItem?: (from: TreeViewItemData<T>, to: TreeViewItemData<T>) => void;
+  onDragItem?: (
+    from: TreeViewItemData<T>,
+    to: TreeViewItemData<T>,
+    side: 'bottom' | 'top',
+  ) => void;
   onCollapsedChange?: (value?: string[]) => void;
   onSelectChange?: (value?: TreeViewItemData<T>) => void;
   onDoubleClick?: (value: TreeViewItemData<T>) => void;
@@ -68,7 +73,7 @@ function TreeViewItem<T>(props: TreeViewItemProps<T>) {
     onRenamedSelectedItem,
   } = props;
 
-  const hasCollapsed = item.children && item.children.length > 0;
+  const hasCollapsed = !!item.children;
   const isCollapsed = collapsedKeys?.includes(item.id);
 
   const onSelectChangeCallback = useCallback(() => {
@@ -86,16 +91,23 @@ function TreeViewItem<T>(props: TreeViewItemProps<T>) {
         onDragStart={() => {
           GLOBAL_TREE_DRAG_ITEM = item;
         }}
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={() => {
+        onDragOver={(e) => {
+          e.preventDefault();
+        }}
+        onDrop={(_, side) => {
           if (onDragItem) {
             if (GLOBAL_TREE_DRAG_ITEM) {
-              onDragItem(GLOBAL_TREE_DRAG_ITEM as TreeViewItemData<T>, item);
+              onDragItem(
+                GLOBAL_TREE_DRAG_ITEM as TreeViewItemData<T>,
+                item,
+                side,
+              );
             }
           }
         }}
         key={item.id}
         text={item.text || ''}
+        subtitle={item.subtitle}
         icon={item.icon}
         depth={depth}
         onDoubleClick={() => {
@@ -116,8 +128,8 @@ function TreeViewItem<T>(props: TreeViewItemProps<T>) {
             if (isCollapsed) {
               onCollapsedChange(
                 collapsedKeys?.filter(
-                  (collapsedKey) => collapsedKey !== item.id
-                )
+                  (collapsedKey) => collapsedKey !== item.id,
+                ),
               );
             } else {
               onCollapsedChange([...(collapsedKeys || []), item.id]);
@@ -163,7 +175,7 @@ export default function TreeView<T>(props: TreeViewProps<T>) {
         }
       }
     },
-    [onSelectChange, onBeforeSelectChange]
+    [onSelectChange, onBeforeSelectChange],
   );
 
   return (

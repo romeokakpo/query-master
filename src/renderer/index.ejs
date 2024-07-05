@@ -6,7 +6,14 @@
       http-equiv="Content-Security-Policy"
       content="script-src 'self' 'unsafe-inline'"
     />
-    <title>Query Master</title>
+
+    <script type="text/javascript">
+      window.env = {
+        env: "<%= htmlWebpackPlugin.options.env %>"
+      };
+    </script>
+
+    <title>Querym</title>
   </head>
   <body>
     <div id="root"></div>

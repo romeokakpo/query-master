@@ -1,4 +1,4 @@
-import { SqlQueryCallback } from 'drivers/SQLLikeConnection';
+import { SqlQueryCallback } from 'drivers/base/SQLLikeConnection';
 import { QueryResult } from 'types/SqlResult';
 import { SqlStatement } from 'types/SqlStatement';
 import { Parser, AST } from 'node-sql-parser';
@@ -9,18 +9,18 @@ export interface SqlStatementWithAnalyze extends SqlStatement {
 
 export type BeforeAllEventCallback = (
   statements: SqlStatementWithAnalyze[],
-  skipProtection?: boolean
+  skipProtection?: boolean,
 ) => Promise<boolean>;
 
 export type BeforeEachEventCallback = (
   statements: SqlStatementWithAnalyze,
-  skipProtection?: boolean
+  skipProtection?: boolean,
 ) => Promise<boolean>;
 
-export interface SqlStatementResult {
+export interface SqlStatementResult<ResultType = QueryResult> {
   statement: SqlStatement;
   time: number;
-  result: QueryResult;
+  result: ResultType;
 }
 
 interface SqlExecuteOption {
@@ -41,7 +41,7 @@ export class SqlRunnerManager {
 
   async execute(
     statements: SqlStatement[],
-    options?: SqlExecuteOption
+    options?: SqlExecuteOption,
   ): Promise<SqlStatementResult[]> {
     const result: SqlStatementResult[] = [];
     const parser = new Parser();
@@ -84,12 +84,10 @@ export class SqlRunnerManager {
 
         if (options?.onStart) options.onStart();
 
-        console.log(statement.sql);
-
         const startTime = Date.now();
         const returnedResult = await this.executor(
           statement.sql,
-          statement.params
+          statement.params,
         );
 
         if (!returnedResult?.error) {
@@ -117,7 +115,7 @@ export class SqlRunnerManager {
 
   unregisterBeforeAll(cb: BeforeAllEventCallback) {
     this.beforeAllCallbacks = this.beforeAllCallbacks.filter(
-      (prevCb) => prevCb !== cb
+      (prevCb) => prevCb !== cb,
     );
   }
 
@@ -127,7 +125,7 @@ export class SqlRunnerManager {
 
   unregisterBeforeEach(cb: BeforeEachEventCallback) {
     this.beforeEachCallbacks = this.beforeEachCallbacks.filter(
-      (prevCb) => prevCb !== cb
+      (prevCb) => prevCb !== cb,
     );
   }
 }

@@ -1,6 +1,6 @@
 // Disable no-unused-vars, broken for spread args
 /* eslint no-unused-vars: off */
-import { ConnectionStoreItem } from 'drivers/SQLLikeConnection';
+import { ConnectionStoreItem } from 'drivers/base/SQLLikeConnection';
 import {
   contextBridge,
   ipcRenderer,
@@ -8,6 +8,8 @@ import {
   MessageBoxSyncOptions,
   MenuItemConstructorOptions,
   SaveDialogSyncOptions,
+  OpenDialogOptions,
+  OpenDialogReturnValue,
 } from 'electron';
 import {
   ProgressInfo,
@@ -50,14 +52,6 @@ const electronHandler = {
   close: () => {
     ipcRenderer.invoke('close');
   },
-
-  listenConnectionStatusChanged: (
-    callback: (event: IpcRendererEvent, status: string) => void
-  ) => {
-    ipcRenderer.removeAllListeners('connection-status-change');
-    return ipcRenderer.on('connection-status-change', callback);
-  },
-
   showMessageBox: (options: MessageBoxSyncOptions): Promise<number> =>
     ipcRenderer.invoke('show-message-box', [options]),
 
@@ -65,9 +59,17 @@ const electronHandler = {
   // Related to File O/I
   // ----------------------------------
   showSaveDialog: (
-    options: SaveDialogSyncOptions
+    options: SaveDialogSyncOptions,
   ): Promise<string | undefined> =>
     ipcRenderer.invoke('show-save-dialog', [options]),
+
+  showOpenDialog: (
+    options: OpenDialogOptions,
+  ): Promise<OpenDialogReturnValue> =>
+    ipcRenderer.invoke('show-open-dialog', [options]),
+
+  readFile: (fileName: string): Promise<Buffer> =>
+    ipcRenderer.invoke('read-file', [fileName]),
 
   showFileInFolder: (fileName: string) =>
     ipcRenderer.invoke('show-item-in-folder', [fileName]),
@@ -86,7 +88,7 @@ const electronHandler = {
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
 
   handleMenuClick: (
-    callback: (event: IpcRendererEvent, id: string) => void
+    callback: (event: IpcRendererEvent, id: string) => void,
   ) => {
     if (cacheHandleMenuClickCb) {
       ipcRenderer.off('native-menu-click', cacheHandleMenuClickCb);
@@ -95,40 +97,60 @@ const electronHandler = {
     return ipcRenderer.on('native-menu-click', callback);
   },
 
+  listenDeeplink: (
+    callback: (event: IpcRendererEvent, url: string) => void,
+  ) => {
+    ipcRenderer.removeAllListeners('deeplink');
+    return ipcRenderer.on('deeplink', callback);
+  },
+
   listenCheckingForUpdate: (callback: () => void) => {
     ipcRenderer.removeAllListeners('checking-for-update');
     return ipcRenderer.on('checking-for-update', callback);
   },
 
   listenUpdateAvailable: (
-    callback: (event: IpcRendererEvent, e: UpdateInfo) => void
+    callback: (event: IpcRendererEvent, e: UpdateInfo) => void,
   ) => {
     ipcRenderer.removeAllListeners('update-available');
     return ipcRenderer.on('update-available', callback);
   },
 
   listenUpdateNotAvailable: (
-    callback: (event: IpcRendererEvent, e: UpdateInfo) => void
+    callback: (event: IpcRendererEvent, e: UpdateInfo) => void,
   ) => {
     ipcRenderer.removeAllListeners('update-not-available');
     return ipcRenderer.on('update-not-available', callback);
   },
 
   listenUpdateDownloadProgress: (
-    callback: (event: IpcRendererEvent, e: ProgressInfo) => void
+    callback: (event: IpcRendererEvent, e: ProgressInfo) => void,
   ) => {
     ipcRenderer.removeAllListeners('update-download-progress');
     return ipcRenderer.on('update-download-progress', callback);
   },
 
   listenUpdateDownloaded: (
-    callback: (event: IpcRendererEvent, e: UpdateDownloadedEvent) => void
+    callback: (event: IpcRendererEvent, e: UpdateDownloadedEvent) => void,
   ) => {
     ipcRenderer.removeAllListeners('update-downloaded');
     return ipcRenderer.on('update-downloaded', callback);
   },
 
+  listen: function listen<T = unknown[]>(
+    name: string,
+    callback: (event: IpcRendererEvent, ...args: T[]) => void,
+  ) {
+    return ipcRenderer.on(name, callback);
+  },
+
   openExternal: (url: string) => ipcRenderer.invoke('open-external', [url]),
+
+  // Encryption
+  encrypt: (text: string, masterKey: string, salt: string) =>
+    ipcRenderer.invoke('encrypt', [text, masterKey, salt]),
+  decrypt: (encrypted: string, masterKey: string, salt: string) =>
+    ipcRenderer.invoke('decrypt', [encrypted, masterKey, salt]),
 };
 
 contextBridge.exposeInMainWorld('electron', electronHandler);

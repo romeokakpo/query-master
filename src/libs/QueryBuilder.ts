@@ -1,9 +1,17 @@
 import SqlString from 'sqlstring';
 
-interface QueryRaw {
-  __typename: 'query_raw';
-  raw: string;
-  binding: unknown[];
+export type QueryDialetType = 'mysql' | 'postgre';
+
+class QueryRaw {
+  protected raw: string;
+
+  constructor(raw: string) {
+    this.raw = raw;
+  }
+
+  getRaw() {
+    return this.raw;
+  }
 }
 
 interface QueryWhere {
@@ -19,11 +27,13 @@ interface QueryWhere {
 interface QueryStates {
   table?: string;
   type: 'select' | 'update' | 'insert' | 'delete';
-  insert?: Record<string, unknown>;
-  update?: Record<string, unknown>;
+  insert?: Record<string, unknown | QueryRaw>;
+  update?: Record<string, unknown | QueryRaw>;
   where: QueryWhere[];
-  select: string[];
+  select: (string | QueryRaw)[];
   limit?: number;
+  offset?: number;
+  orderBy: { name: string; order: 'ASC' | 'DESC' }[];
 }
 
 abstract class QueryDialect {
@@ -41,18 +51,49 @@ class MySqlDialect implements QueryDialect {
   }
 }
 
+class PgDialect implements QueryDialect {
+  escapeIdentifier(value: string): string {
+    return value
+      .split('.')
+      .map((str) => '"' + str.replace(/"/g, '""') + '"')
+      .join('.');
+  }
+
+  format(sql: string, binding: unknown[]): string {
+    return SqlString.format(sql, binding);
+  }
+}
+
 export class QueryBuilder {
   protected dialect: QueryDialect = new MySqlDialect();
+  protected dialectType: QueryDialetType;
   protected states: QueryStates = {
     type: 'select',
     where: [],
     select: [],
+    orderBy: [],
   };
 
-  constructor(dialect: 'mysql') {
+  constructor(dialect: QueryDialetType) {
     if (dialect === 'mysql') {
       this.dialect = new MySqlDialect();
+    } else if (dialect === 'postgre') {
+      this.dialect = new PgDialect();
     }
+
+    this.dialectType = dialect;
+  }
+
+  protected escapeIdentifier(id: string | QueryRaw) {
+    if (typeof id === 'string') {
+      return this.dialect.escapeIdentifier(id);
+    }
+
+    return id.getRaw();
+  }
+
+  static raw(str: string): QueryRaw {
+    return new QueryRaw(str);
   }
 
   escapeId(name: string) {
@@ -98,7 +139,7 @@ export class QueryBuilder {
     return this;
   }
 
-  select(...columns: string[]) {
+  select(...columns: (string | QueryRaw)[]) {
     this.states.select = this.states.select.concat(columns);
     return this;
   }
@@ -106,6 +147,15 @@ export class QueryBuilder {
   limit(n: number) {
     this.states.limit = n;
     return this;
+  }
+
+  offset(n: number) {
+    this.states.offset = n;
+    return this;
+  }
+
+  orderBy(name: string, order: 'ASC' | 'DESC' = 'ASC') {
+    this.states.orderBy.push({ name, order });
   }
 
   protected buildWhere(where: QueryWhere[]): {
@@ -133,6 +183,22 @@ export class QueryBuilder {
     return { sql, binding };
   }
 
+  protected buildLimit(): [string, number[]] {
+    if (this.states.limit) {
+      if (this.states.offset) {
+        if (this.dialectType === 'postgre') {
+          return ['LIMIT ? OFFSET ?', [this.states.limit, this.states.offset]];
+        } else {
+          return ['LIMIT ?,?', [this.states.offset, this.states.limit]];
+        }
+      } else {
+        return ['LIMIT ?', [this.states.limit]];
+      }
+    }
+
+    return ['', []];
+  }
+
   toSQL(): { sql: string; binding: unknown[] } {
     if (this.states.type === 'update') {
       if (!this.states.table) throw 'no table specified';
@@ -142,19 +208,27 @@ export class QueryBuilder {
 
       let binding: unknown[] = [];
       const commandPart = `UPDATE ${this.dialect?.escapeIdentifier(
-        this.states.table
+        this.states.table,
       )}`;
       const setPart: string[] = [];
 
       for (const [updateField, updateValue] of Object.entries(
-        this.states.update
+        this.states.update,
       )) {
-        setPart.push(`${this.dialect?.escapeIdentifier(updateField)}=?`);
-        binding.push(updateValue);
+        if (updateValue instanceof QueryRaw) {
+          setPart.push(
+            `${this.dialect?.escapeIdentifier(
+              updateField,
+            )}=${updateValue.getRaw()}`,
+          );
+        } else {
+          setPart.push(`${this.dialect?.escapeIdentifier(updateField)}=?`);
+          binding.push(updateValue);
+        }
       }
 
       const { sql: whereSql, binding: whereBinding } = this.buildWhere(
-        this.states.where
+        this.states.where,
       );
       binding = binding.concat(...whereBinding);
 
@@ -176,17 +250,17 @@ export class QueryBuilder {
         this.states.select.length === 0
           ? '*'
           : this.states.select
-              .map((field) => this.dialect.escapeIdentifier(field))
+              .map((field) => this.escapeIdentifier(field))
               .join(',');
 
       const { sql: whereSql, binding: whereBinding } = this.buildWhere(
-        this.states.where
+        this.states.where,
       );
 
       binding = binding.concat(...whereBinding);
-      if (this.states.limit) {
-        binding.push(this.states.limit);
-      }
+
+      const [limitPart, limitBinding] = this.buildLimit();
+      binding = binding.concat(limitBinding);
 
       const sql =
         [
@@ -195,7 +269,16 @@ export class QueryBuilder {
           'FROM',
           this.dialect.escapeIdentifier(this.states.table),
           whereSql ? 'WHERE ' + whereSql : whereSql,
-          this.states.limit ? `LIMIT ?` : null,
+          this.states.orderBy.length > 0
+            ? 'ORDER BY ' +
+              this.states.orderBy
+                .map(
+                  ({ name, order }) =>
+                    `${this.escapeIdentifier(name)} ${order}`,
+                )
+                .join(',')
+            : undefined,
+          limitPart,
         ]
           .filter(Boolean)
           .join(' ') + ';';
@@ -205,7 +288,7 @@ export class QueryBuilder {
       if (!this.states.table) throw 'no table specified';
 
       const { sql: whereSql, binding: whereBinding } = this.buildWhere(
-        this.states.where
+        this.states.where,
       );
 
       let binding: unknown[] = [];
@@ -228,11 +311,18 @@ export class QueryBuilder {
 
       if (this.states.insert) {
         const binding: unknown[] = [];
+        const values: string[] = [];
         const fields: string[] = [];
 
         for (const [field, value] of Object.entries(this.states.insert)) {
-          binding.push(value);
-          fields.push(field);
+          if (value instanceof QueryRaw) {
+            fields.push(field);
+            values.push(value.getRaw());
+          } else if (value !== undefined) {
+            binding.push(value);
+            fields.push(field);
+            values.push('?');
+          }
         }
 
         const sql =
@@ -244,14 +334,14 @@ export class QueryBuilder {
                 .map((field) => this.dialect.escapeIdentifier(field))
                 .join(', ') +
               ')',
-            'VALUES(' + new Array(binding.length).fill('?').join(', ') + ')',
+            'VALUES(' + values.join(', ') + ')',
           ].join(' ') + ';';
 
         return { sql, binding };
       }
     }
 
-    throw 'not implemented';
+    throw new Error('Not implemented');
   }
 
   toRawSQL() {
@@ -260,6 +350,6 @@ export class QueryBuilder {
   }
 }
 
-export function qb(dialect?: 'mysql') {
+export function qb(dialect?: QueryDialetType) {
   return new QueryBuilder(dialect || 'mysql');
 }

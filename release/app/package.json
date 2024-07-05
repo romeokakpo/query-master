@@ -1,12 +1,12 @@
 {
-  "name": "query-master",
-  "version": "0.3.3",
+  "name": "querym",
+  "version": "0.5.9",
   "description": "Yet another database GUI for MySQL",
   "license": "MIT",
   "author": {
     "name": "Visal .In",
     "email": "invisal@gmail.com",
-    "url": "https://github.com/invisal/query-master"
+    "url": "https://github.com/querymx/querym"
   },
   "main": "./dist/main/main.js",
   "scripts": {

@@ -1,4 +1,4 @@
-import { ConnectionStoreItem } from 'drivers/SQLLikeConnection';
+import { ConnectionStoreItem } from 'drivers/base/SQLLikeConnection';
 import { useState, useEffect, useCallback } from 'react';
 import { SchemaProvider } from 'renderer/contexts/SchemaProvider';
 import { DatabaseSettingProvider } from 'renderer/contexts/DatabaseSettingProvider';
@@ -9,8 +9,6 @@ import {
 import { WindowTabProvider } from 'renderer/contexts/WindowTabProvider';
 import SqlProtectionProvider from 'renderer/contexts/SqlProtectionProvider';
 import { DatabaseSchemas } from 'types/SqlSchema';
-import Layout from 'renderer/components/Layout';
-import MainToolbar from './MainToolbar';
 import MainView from './MainView';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCloudBolt, faSpinner } from '@fortawesome/free-solid-svg-icons';
@@ -21,6 +19,7 @@ import { useConnection } from 'renderer/App';
 import SwitchDatabaseProvider from 'renderer/contexts/SwitchDatabaseProvider';
 import UpdateConnectionStatus from './UpdateConnectionStatus';
 import useWindowTitle from 'renderer/hooks/useWindowTitle';
+import SavedQueryProvider from './SavedQueryProvider';
 
 function DatabaseScreenBody() {
   const { common } = useSqlExecute();
@@ -34,9 +33,7 @@ function DatabaseScreenBody() {
     setLoading(true);
     common
       .getSchema()
-      .then((data) => {
-        setSchema(data);
-      })
+      .then(setSchema)
       .catch((e) => {
         setError(true);
         setErrorMessage(e.message);
@@ -105,14 +102,9 @@ function DatabaseScreenBody() {
     <SchemaProvider schema={schema} reloadSchema={reloadSchema}>
       <SwitchDatabaseProvider>
         <UpdateConnectionStatus />
-        <Layout>
-          <Layout.Fixed>
-            <MainToolbar />
-          </Layout.Fixed>
-          <Layout.Grow>
-            <MainView />
-          </Layout.Grow>
-        </Layout>
+        <SavedQueryProvider>
+          <MainView />
+        </SavedQueryProvider>
       </SwitchDatabaseProvider>
     </SchemaProvider>
   );
@@ -123,7 +115,7 @@ export default function DatabaseScreen({
 }: {
   config: ConnectionStoreItem;
 }) {
-  useWindowTitle('Query Master - ' + config.name);
+  useWindowTitle('Querym - ' + config.name);
   const [isConnected, setConnected] = useState(false);
 
   useEffect(() => {

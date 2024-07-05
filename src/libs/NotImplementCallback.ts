@@ -1,3 +1,3 @@
-export default function NotImplementCallback() {
-  throw 'Not implemented';
+export default function NotImplementCallback<T = void>(): T {
+  throw new Error('Not implemented');
 }

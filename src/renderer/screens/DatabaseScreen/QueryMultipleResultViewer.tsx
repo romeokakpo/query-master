@@ -2,16 +2,17 @@ import WindowTab from 'renderer/components/WindowTab';
 import QueryResultViewer from './QueryResultViewer';
 import { useMemo, useState, memo } from 'react';
 import { SqlStatementResult } from 'libs/SqlRunnerManager';
+import { QueryTypedResult } from 'types/SqlResult';
 
 interface QueryMultipleResultViewerProps {
-  value: SqlStatementResult[];
+  value: SqlStatementResult<QueryTypedResult>[];
 }
 
 export default memo(function QueryMultipleResultViewer({
   value,
 }: QueryMultipleResultViewerProps) {
   const queryResultOnly = useMemo(() => {
-    return value.filter((v) => !v.result.resultHeader);
+    return value.filter((v) => v.result.headers.length > 0);
   }, [value]);
   const [selected, setSelected] = useState(`query_0`);
 

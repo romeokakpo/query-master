@@ -1,8 +1,6 @@
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
-import { BrowserWindow, ipcMain } from 'electron';
-
-let globalCheckForUpdate = false;
+import { BrowserWindow } from 'electron';
 
 export default function handleAutoUpdate(window: BrowserWindow) {
   log.transports.file.level = 'info';
@@ -26,15 +24,5 @@ export default function handleAutoUpdate(window: BrowserWindow) {
 
   autoUpdater.addListener('update-downloaded', (e) => {
     window.webContents.send('update-downloaded', e);
-  });
-
-  ipcMain.handle('check-for-updates', () => {
-    if (globalCheckForUpdate) return;
-    globalCheckForUpdate = true;
-    autoUpdater.checkForUpdates();
-  });
-
-  ipcMain.handle('quit-and-install', () => {
-    autoUpdater.quitAndInstall();
   });
 }

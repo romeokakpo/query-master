@@ -1,10 +1,10 @@
-import { ConnectionStoreItem } from 'drivers/SQLLikeConnection';
+import { ConnectionStoreItem } from 'drivers/base/SQLLikeConnection';
 import ConnectionString from 'libs/ConnectionString';
 import { useCallback, useState } from 'react';
 import Button from 'renderer/components/Button';
 import Modal from 'renderer/components/Modal';
 import SideMenu from 'renderer/components/SideMenu';
-import TextField from 'renderer/components/TextField';
+import TextAreaField from 'renderer/components/TextField/TextAreaField';
 
 interface ExportConnectionStringItemProps {
   setting: ConnectionStoreItem;
@@ -39,12 +39,11 @@ export default function ExportConnectionStringItem({
         onClose={() => setOpen(false)}
       >
         <Modal.Body>
-          <TextField
+          <TextAreaField
             readOnly
             autoFocus
             value={connectionString}
             label={'Connection String'}
-            multipleLine
             placeholder="mysql://user:password@host:port"
           />
         </Modal.Body>

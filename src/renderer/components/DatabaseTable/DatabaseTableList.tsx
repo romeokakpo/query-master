@@ -1,15 +1,12 @@
 import styles from './styles.module.scss';
 import TreeView, { TreeViewItemData } from '../TreeView';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useWindowTab } from 'renderer/contexts/WindowTabProvider';
-import QueryWindow from 'renderer/screens/DatabaseScreen/QueryWindow';
 import { useSchema } from 'renderer/contexts/SchemaProvider';
-import { QueryBuilder } from 'libs/QueryBuilder';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
-  faCalendar,
-  faEye,
-  faGear,
+  faRefresh,
+  faTableCells,
   faTableList,
 } from '@fortawesome/free-solid-svg-icons';
 import { useContextMenu } from 'renderer/contexts/ContextMenuProvider';
@@ -18,25 +15,58 @@ import Layout from '../Layout';
 import DatabaseSelection from './DatabaseSelection';
 import ListViewEmptyState from '../ListView/ListViewEmptyState';
 import TextField from '../TextField';
-import { useDebounce } from 'hooks/useDebounce';
+import { useDebounce } from 'renderer/hooks/useDebounce';
+import TableDataViewer from 'renderer/screens/DatabaseScreen/TableDataViewer';
+import { useSqlExecute } from 'renderer/contexts/SqlExecuteProvider';
+import { buildSchemaTree } from './buildTableTree';
+
+type SelectedTreeViewItem = TreeViewItemData<{
+  database: string;
+  name: string;
+  type: string;
+}>;
 
 export default function DatabaseTableList() {
   const [search, setSearch] = useState('');
+  const { reloadSchema } = useSchema();
+  const { common } = useSqlExecute();
   const searchDebounce = useDebounce(search, 500);
   const { schema, currentDatabase } = useSchema();
-  const [selected, setSelected] = useState<
-    TreeViewItemData<{
-      database: string;
-      name: string;
-      type: string;
-    }>
-  >();
+  const [selected, setSelected] = useState<SelectedTreeViewItem>();
   const { newWindow } = useWindowTab();
-  const [collapsed, setCollapsed] = useState<string[] | undefined>([
-    'tables',
-    'events',
-    'triggers',
-  ]);
+
+  const [collapsed, setCollapsed] = useState<string[] | undefined>();
+
+  useEffect(() => {
+    setCollapsed([
+      `${currentDatabase}/tables`,
+      `${currentDatabase}/events`,
+      `${currentDatabase}/triggers`,
+    ]);
+  }, [setCollapsed, currentDatabase]);
+
+  const viewTableData = useCallback(
+    (item: SelectedTreeViewItem) => {
+      const tableName = item.data?.name;
+      const databaseName = item.data?.database;
+      const type = item.data?.type;
+      if ((type === 'table' || type === 'view') && tableName && databaseName) {
+        newWindow(
+          tableName,
+          (key, name) => (
+            <TableDataViewer
+              tableName={tableName}
+              databaseName={databaseName}
+              tabKey={key}
+              name={name}
+            />
+          ),
+          { icon: <FontAwesomeIcon icon={faTableCells} color="#9b59b6" /> },
+        );
+      }
+    },
+    [currentDatabase],
+  );
 
   const { handleContextMenu } = useContextMenu(() => {
     const tableName = selected?.data?.name;
@@ -50,9 +80,13 @@ export default function DatabaseTableList() {
       databaseName
     ) {
       return [
-        { text: 'Select 200 Rows' },
+        {
+          text: 'View Data',
+          onClick: () => viewTableData(selected),
+        },
         {
           text: 'Open Structure',
+          separator: true,
           onClick: () => {
             newWindow(
               tableName,
@@ -66,9 +100,14 @@ export default function DatabaseTableList() {
                   />
                 );
               },
-              <FontAwesomeIcon icon={faTableList} color="#3498db" />
+              { icon: <FontAwesomeIcon icon={faTableList} color="#3498db" /> },
             );
           },
+        },
+        {
+          text: 'Refresh',
+          icon: <FontAwesomeIcon icon={faRefresh} />,
+          onClick: () => reloadSchema(),
         },
       ];
     }
@@ -78,94 +117,17 @@ export default function DatabaseTableList() {
 
   const schemaListItem = useMemo(() => {
     if (!schema) return [];
-    if (!currentDatabase) return [];
 
-    const currentDatabaseSchema = schema[currentDatabase];
-    if (!currentDatabaseSchema) return [];
-
-    const tables = Object.values(currentDatabaseSchema.tables)
-      .map((table) => ({
-        id: `table/${table.name}`,
-        text: table.name,
-        icon:
-          table.type === 'TABLE' ? (
-            <FontAwesomeIcon icon={faTableList} color="#3498db" />
-          ) : (
-            <FontAwesomeIcon icon={faEye} color="#e67e22" />
-          ),
-        data: {
-          name: table.name,
-          type: table.type === 'TABLE' ? 'table' : 'view',
-          database: currentDatabase,
-        },
-      }))
-      .filter((table) => {
-        if (searchDebounce) {
-          return table.text.indexOf(searchDebounce) >= 0;
-        }
-
-        return true;
+    if (common.FLAG_USE_STATEMENT) {
+      if (!currentDatabase) return [];
+      const currentDatabaseSchema = schema.getDatabase(currentDatabase);
+      if (!currentDatabaseSchema) return [];
+      return buildSchemaTree(currentDatabaseSchema, searchDebounce).children;
+    } else {
+      return Object.entries(schema.getSchema()).map((entry) => {
+        return buildSchemaTree(entry[1], search);
       });
-
-    const triggers = currentDatabaseSchema.triggers
-      .map((trigger) => ({
-        id: `trigger/${trigger}`,
-        text: trigger,
-        icon: <FontAwesomeIcon icon={faGear} color="#bdc3c7" />,
-        data: {
-          name: trigger,
-          database: currentDatabase,
-          type: 'trigger',
-        },
-      }))
-      .filter((table) => {
-        if (searchDebounce) {
-          return table.text.indexOf(searchDebounce) >= 0;
-        }
-
-        return true;
-      });
-
-    const events = currentDatabaseSchema.events
-      .map((event) => ({
-        id: `event/${event}`,
-        text: event,
-        icon: <FontAwesomeIcon icon={faCalendar} color="#27ae60" />,
-        data: {
-          name: event,
-          type: 'event',
-          database: currentDatabase,
-        },
-      }))
-      .filter((table) => {
-        if (searchDebounce) {
-          return table.text.indexOf(searchDebounce) >= 0;
-        }
-
-        return true;
-      });
-
-    tables.sort((a, b) => a.text.localeCompare(b.text));
-    triggers.sort((a, b) => a.text.localeCompare(b.text));
-    events.sort((a, b) => a.text.localeCompare(b.text));
-
-    return [
-      {
-        id: 'tables',
-        text: `Tables (${Object.values(currentDatabaseSchema.tables).length})`,
-        children: tables,
-      },
-      {
-        id: 'events',
-        text: `Events (${currentDatabaseSchema.events.length})`,
-        children: events,
-      },
-      {
-        id: 'triggers',
-        text: `Triggers (${currentDatabaseSchema.triggers.length})`,
-        children: triggers,
-      },
-    ];
+    }
   }, [schema, currentDatabase, searchDebounce]);
 
   if (!schema) return <div />;
@@ -173,9 +135,11 @@ export default function DatabaseTableList() {
   return (
     <div className={styles.tables}>
       <Layout>
-        <Layout.Fixed>
-          <DatabaseSelection />
-        </Layout.Fixed>
+        {common.FLAG_USE_STATEMENT && (
+          <Layout.Fixed>
+            <DatabaseSelection />
+          </Layout.Fixed>
+        )}
         <Layout.Grow>
           {currentDatabase ? (
             <TreeView
@@ -186,23 +150,7 @@ export default function DatabaseTableList() {
               collapsedKeys={collapsed}
               onCollapsedChange={setCollapsed}
               onContextMenu={handleContextMenu}
-              onDoubleClick={(item) => {
-                const tableName = item.data?.name;
-                const type = item.data?.type;
-                if ((type === 'table' || type === 'view') && tableName) {
-                  newWindow(`SELECT ${tableName}`, (key, name) => (
-                    <QueryWindow
-                      initialSql={new QueryBuilder('mysql')
-                        .table(tableName)
-                        .limit(200)
-                        .toRawSQL()}
-                      initialRun
-                      tabKey={key}
-                      name={name}
-                    />
-                  ));
-                }
-              }}
+              onDoubleClick={viewTableData}
               items={schemaListItem}
             />
           ) : (

@@ -4,6 +4,10 @@
   box-sizing: border-box;
 }
 
+body {
+  user-select: none;
+}
+
 /* --------------------------------
   Color Variables
 ----------------------------------- */
@@ -22,6 +26,7 @@ body {
   --color-surface-light: #ecf0f1;
   --color-primary: #1a64f4;
   --color-primary-text: #fff;
+  --color-primary-hover: #3a84ff;
 
   --color-critical: #e74c3c;
 
@@ -73,6 +78,7 @@ body.dark {
   --color-surface-light: #4f4f4f;
   --color-primary: #1a64f4;
   --color-primary-text: #fff;
+  --color-primary-hover: #3a84ff;
 
   --color-critical: #e74c3c;
 
@@ -127,14 +133,14 @@ body.dark {
 
 html,
 body {
-  font-family: 'OpenSans';
+  font-family: 'OpenSans', sans-serif;
   font-size: 13px;
   padding: 0;
   margin: 0;
 }
 
 .mono {
-  font-family: 'CascadiaCode';
+  font-family: 'CascadiaCode', sans-serif;
 }
 
 .scroll::-webkit-scrollbar {
@@ -220,4 +226,43 @@ hr {
 
 .cm-table-name > span {
   color: inherit !important;
+}
+
+.code-tooltip {
+  font-size: 0.8em;
+  margin-top: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.code-tooltip hr {
+  margin-top: 5px;
+  margin-bottom: 5px;
+}
+
+.code-tooltip p {
+  margin-bottom: 10px;
+}
+
+.code-tooltip pre {
+  padding: 10px;
+  background: #333;
+  border-radius: 5px;
+}
+
+.code-tooltip table {
+  margin-top: 10px;
+  border-collapse: collapse;
+}
+
+.code-tooltip td,
+.code-tooltip th {
+  padding: 5px;
+  text-align: left;
+  border: 2px solid #ccc;
+}
+
+.cm-tooltip-cursor {
+  overflow-y: auto;
+  max-height: 600px;
+  user-select: text;
 }

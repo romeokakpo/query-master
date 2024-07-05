@@ -7,9 +7,12 @@ import TableCellEnum from './TableCellEnum';
 import { TableCellCustomTypeProps } from './createTableCellType';
 import TableCellOther from './TableCellOther';
 import TableCellString from './TableCellString';
+import TableCellDateString from './TableCellDateString';
+import BaseType from 'renderer/datatype/BaseType';
+import TableCellPoint from './TableCellPoint';
 
 interface TableCellProps {
-  value: unknown;
+  value: BaseType;
   header: QueryResultHeader;
   row: number;
   col: number;
@@ -17,7 +20,7 @@ interface TableCellProps {
 }
 
 function getComponentFromHeader(
-  header: QueryResultHeader
+  header: QueryResultHeader,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): React.FC<TableCellCustomTypeProps<any>> {
   if (header.type.type === 'number') {
@@ -26,12 +29,16 @@ function getComponentFromHeader(
     return TableCellJson;
   } else if (header.type.type === 'decimal') {
     return TableCellDecimal;
+  } else if (
+    ['string_date', 'string_time', 'string_datetime'].includes(header.type.type)
+  ) {
+    return TableCellDateString;
+  } else if (header.type.type === 'enum') {
+    return TableCellEnum;
   } else if (['string'].includes(header.type.type)) {
     return TableCellString;
-  } else if (header.columnDefinition) {
-    if (header.columnDefinition.dataType === 'enum') {
-      return TableCellEnum;
-    }
+  } else if (header.type.type === 'point') {
+    return TableCellPoint;
   }
 
   return TableCellOther;

@@ -1,6 +1,12 @@
-import { faAdd, faClose, faCode } from '@fortawesome/free-solid-svg-icons';
+import { faAdd, faClose } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { ReactElement, ReactNode, useState } from 'react';
+import {
+  ReactElement,
+  ReactNode,
+  createContext,
+  useContext,
+  useState,
+} from 'react';
 import styles from './styles.module.scss';
 
 export interface WindowTabItem {
@@ -22,6 +28,15 @@ interface WindowTabProps {
     e: React.MouseEvent<HTMLLIElement, MouseEvent>,
     tab: WindowTabItem
   ) => void;
+}
+
+const CurrentTabContext = createContext<{ tabName: string; tabKey: string }>({
+  tabName: '',
+  tabKey: '',
+});
+
+export function useCurrentTab() {
+  return useContext(CurrentTabContext);
 }
 
 export default function WindowTab({
@@ -117,9 +132,7 @@ export default function WindowTab({
                   }
                 }}
               >
-                <span className={styles.icon}>
-                  {tab.icon ? tab.icon : <FontAwesomeIcon icon={faCode} />}
-                </span>
+                {tab.icon && <span className={styles.icon}>{tab.icon}</span>}
                 <span>{tab.name}</span>
                 {isTabClosable && (
                   <span
@@ -138,6 +151,7 @@ export default function WindowTab({
               </li>
             );
           })}
+          <li style={{ flexGrow: 1 }}></li>
         </ul>
       </div>
       <div className={styles.contentContainer}>
@@ -147,10 +161,14 @@ export default function WindowTab({
               className={styles.content}
               key={tab.key}
               style={{
-                visibility: tab.key === selected ? 'visible' : 'hidden',
+                visibility: tab.key === selected ? 'inherit' : 'hidden',
               }}
             >
-              {tab.component}
+              <CurrentTabContext.Provider
+                value={{ tabKey: tab.key, tabName: tab.name }}
+              >
+                {tab.component}
+              </CurrentTabContext.Provider>
             </div>
           );
         })}

@@ -12,13 +12,12 @@ import { useDatabaseSetting } from './DatabaseSettingProvider';
 import { db } from 'renderer/db';
 import { DatabaseSavedState } from 'types/FileFormatType';
 import QueryWindow from 'renderer/screens/DatabaseScreen/QueryWindow';
-import SqlTableSchemaTab from 'renderer/screens/DatabaseScreen/SqlTableSchemaTab';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faCode, faTableList } from '@fortawesome/free-solid-svg-icons';
+import { faCode } from '@fortawesome/free-solid-svg-icons';
 import NotImplementCallback from 'libs/NotImplementCallback';
 import useBeforeClose from 'renderer/hooks/useBeforeClose';
 
-interface WindowTabItemProps {
+export interface WindowTabItemProps {
   key: string;
   name: string;
   icon?: ReactElement;
@@ -32,6 +31,12 @@ export interface WindowTabItemData {
   table?: string;
 }
 
+type NewWindowCallback = (
+  name: string,
+  createComponent: (key: string, name: string) => ReactElement,
+  options: { icon?: ReactElement; overrideKey?: string }
+) => void;
+
 const WindowTabContext = createContext<{
   tabs: WindowTabItemProps[];
   setTabs: React.Dispatch<React.SetStateAction<WindowTabItemProps[]>>;
@@ -39,12 +44,7 @@ const WindowTabContext = createContext<{
   setSelectedTab: React.Dispatch<React.SetStateAction<string | undefined>>;
   saveWindowTabHistory: () => void;
   setTabData: (key: string, data: WindowTabItemData) => void;
-
-  newWindow: (
-    name: string,
-    createComponent: (key: string, name: string) => ReactElement,
-    icon?: ReactElement
-  ) => void;
+  newWindow: NewWindowCallback;
 }>({
   tabs: [],
   setTabs: NotImplementCallback,
@@ -66,18 +66,19 @@ export function WindowTabProvider({ children }: PropsWithChildren) {
     data: {},
   });
 
-  const newWindow = useCallback(
+  const newWindow = useCallback<NewWindowCallback>(
     (
       name: string,
       createComponent: (key: string, name: string) => ReactElement,
-      icon?: ReactElement
+      options
     ) => {
-      const key = uuidv1();
+      const key = options?.overrideKey ?? uuidv1();
+
       setTabs((prev) => {
         return [
           {
             key,
-            icon,
+            icon: options.icon,
             name,
             component: createComponent(key, name),
           },
@@ -95,48 +96,43 @@ export function WindowTabProvider({ children }: PropsWithChildren) {
       db.table('database_tabs')
         .get(setting.id)
         .then((result: DatabaseSavedState | null) => {
+          let emptyTab = true;
+
           if (result) {
-            setTabs(
-              result.tabs.map((tab) => {
-                let component: ReactElement = <div />;
-                let icon: ReactElement = <FontAwesomeIcon icon={faCode} />;
+            const tabs = result.tabs.map((tab) => {
+              let component: ReactElement = <div />;
+              const icon: ReactElement = <FontAwesomeIcon icon={faCode} />;
 
-                if (tab.type === 'query' || !tab.type) {
-                  component = (
-                    <QueryWindow
-                      tabKey={tab.key}
-                      name={tab.name}
-                      initialSql={tab.sql}
-                    />
-                  );
-                } else if (tab.type === 'table-schema') {
-                  component = (
-                    <SqlTableSchemaTab
-                      tabKey={tab.key}
-                      name={tab.name}
-                      database={tab.database ?? ''}
-                      table={tab.table ?? ''}
-                    />
-                  );
-                  icon = <FontAwesomeIcon icon={faTableList} color="#3498db" />;
-                }
+              if (tab.type === 'query' || !tab.type) {
+                component = <QueryWindow initialSql={tab.sql} />;
+              }
 
-                return {
-                  key: tab.key,
-                  name: tab.name,
-                  icon,
-                  component,
-                };
-              })
-            );
-            setSelectedTab(result.selectedTabKey);
-          } else {
+              return {
+                key: tab.key,
+                name: tab.name,
+                icon,
+                component,
+              };
+            });
+
+            if (tabs.length > 0) {
+              emptyTab = false;
+              setTabs(tabs);
+              setSelectedTab(
+                tabs.find((tab) => tab.key === result.selectedTabKey)
+                  ? result.selectedTabKey
+                  : tabs[0].key
+              );
+            }
+          }
+
+          if (emptyTab) {
             const key = uuidv1();
             setTabs([
               {
                 key,
                 name: 'Unnamed Query',
-                component: <QueryWindow tabKey={key} name={'Unnamed Query'} />,
+                component: <QueryWindow />,
               },
             ]);
             setSelectedTab(key);

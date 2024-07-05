@@ -1,18 +1,18 @@
-import { MySqlConnectionConfig } from 'drivers/SQLLikeConnection';
-import MySQLCommonInterface from 'drivers/common/MySQLCommonInterface';
-import NotImplementCommonInterface from 'drivers/common/NotImplementCommonInterface';
-import SQLCommonInterface from 'drivers/common/SQLCommonInterface';
+import { MySqlConnectionConfig } from 'drivers/base/SQLLikeConnection';
+import MySQLCommonInterface from 'drivers/mysql/MySQLCommonInterface';
+import NotImplementCommonInterface from 'drivers/base/NotImplementCommonInterface';
+import SQLCommonInterface from 'drivers/base/SQLCommonInterface';
 import { PropsWithChildren, createContext, useContext, useMemo } from 'react';
 import { useDatabaseSetting } from './DatabaseSettingProvider';
 import { SqlRunnerManager } from 'libs/SqlRunnerManager';
+import NotImplementCallback from 'libs/NotImplementCallback';
+import PgCommonInterface from 'drivers/pg/PgCommonInterface';
 
 const SqlExecuteContext = createContext<{
   runner: SqlRunnerManager;
   common: SQLCommonInterface;
 }>({
-  runner: new SqlRunnerManager(() => {
-    throw 'Not implemented';
-  }),
+  runner: new SqlRunnerManager(NotImplementCallback),
   common: new NotImplementCommonInterface(),
 });
 
@@ -26,16 +26,23 @@ export function SqlExecuteProvider({ children }: PropsWithChildren) {
     return new SqlRunnerManager(window.electron.query);
   }, []);
 
-  const common = useMemo(
-    () =>
-      new MySQLCommonInterface(
+  const common = useMemo(() => {
+    if (setting?.type === 'mysql') {
+      return new MySQLCommonInterface(
         runner,
         (setting?.config as MySqlConnectionConfig)?.database
           ? (setting?.config as MySqlConnectionConfig)?.database
           : undefined
-      ),
-    [runner, setting]
-  );
+      );
+    } else {
+      return new PgCommonInterface(
+        runner,
+        (setting?.config as MySqlConnectionConfig)?.database
+          ? (setting?.config as MySqlConnectionConfig)?.database
+          : undefined
+      );
+    }
+  }, [runner, setting]);
 
   return (
     <SqlExecuteContext.Provider value={{ runner, common }}>

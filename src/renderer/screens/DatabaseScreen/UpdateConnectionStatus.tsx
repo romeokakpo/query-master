@@ -1,25 +1,22 @@
+import { beautifyConnectionType } from 'libs/Format';
 import { useEffect } from 'react';
 import { useStatusBar } from 'renderer/components/StatusBar/hook';
+import { useSchema } from 'renderer/contexts/SchemaProvider';
 import { useSqlExecute } from 'renderer/contexts/SqlExecuteProvider';
 
 export default function UpdateConnectionStatus() {
+  const { dialect } = useSchema();
   const { common } = useSqlExecute();
   const { setStatusBarConnectionStatus } = useStatusBar();
 
   useEffect(() => {
     common.getVersion().then((version) => {
-      setStatusBarConnectionStatus({ version, status: 'Connected' });
+      setStatusBarConnectionStatus({
+        version: beautifyConnectionType(dialect) + ' ' + version,
+        status: 'Connected',
+      });
     });
-  }, [common, setStatusBarConnectionStatus]);
-
-  useEffect(() => {
-    window.electron.listenConnectionStatusChanged((_, status) => {
-      setStatusBarConnectionStatus({ status });
-    });
-    return () => {
-      setStatusBarConnectionStatus(undefined);
-    };
-  }, [setStatusBarConnectionStatus]);
+  }, [dialect, common]);
 
   return <></>;
 }

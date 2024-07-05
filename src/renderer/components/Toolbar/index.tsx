@@ -2,6 +2,7 @@ import { PropsWithChildren, ReactNode, useCallback } from 'react';
 import styles from './styles.module.scss';
 import { ContextMenuItemProps } from '../ContextMenu';
 import AttachedContextMenu from '../ContextMenu/AttachedContextMenu';
+import KeyboardKey from '../KeyboardKey';
 
 interface ToolbarItemProps {
   icon?: ReactNode;
@@ -9,16 +10,26 @@ interface ToolbarItemProps {
   badge?: number;
   disabled?: boolean;
   onClick?: () => void;
+  primary?: boolean;
+  destructive?: boolean;
+  keyboard?: string;
 }
 
 export default function Toolbar({
   children,
   shadow,
-}: PropsWithChildren<{ shadow?: boolean }>) {
+  shadowTop,
+}: PropsWithChildren<{ shadow?: boolean; shadowTop?: boolean }>) {
+  const className = [
+    styles.toolbar,
+    shadow ? styles.shadow : undefined,
+    shadowTop ? styles.shadowTop : undefined,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
-    <div
-      className={shadow ? `${styles.toolbar} ${styles.shadow}` : styles.toolbar}
-    >
+    <div className={className}>
       <ul>{children}</ul>
     </div>
   );
@@ -30,16 +41,35 @@ Toolbar.Item = function ({
   onClick,
   badge,
   disabled,
+  destructive,
+  primary,
+  keyboard,
 }: ToolbarItemProps) {
+  const className = [
+    styles.button,
+    destructive ? styles.destructive : undefined,
+    primary ? styles.primary : undefined,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
     <li
-      className={styles.button}
+      className={className}
       onClick={disabled ? undefined : onClick}
       style={{ opacity: disabled ? 0.5 : 1 }}
     >
-      {icon && <span className={styles.icon}>{icon}</span>}
-      {text && <span>{text}</span>}
+      {icon && (
+        <span
+          className={styles.icon}
+          style={{ marginRight: text ? '8px' : undefined }}
+        >
+          {icon}
+        </span>
+      )}
+      {text && <span className={styles.text}>{text}</span>}
       {badge ? <span className={styles.badge}>{badge}</span> : <></>}
+      {keyboard && <KeyboardKey name={keyboard} />}
     </li>
   );
 };
@@ -96,11 +126,18 @@ Toolbar.ContextMenu = function ToolbarContextMenu({
   const activator = useCallback(() => {
     return (
       <li className={styles.button}>
-        {icon && <span className={styles.icon}>{icon}</span>}
+        {icon && (
+          <span
+            className={styles.icon}
+            style={{ marginRight: text ? '8px' : undefined }}
+          >
+            {icon}
+          </span>
+        )}
         <span>{text}</span>
       </li>
     );
-  }, []);
+  }, [text]);
 
   return <AttachedContextMenu items={items} activator={activator} />;
 };

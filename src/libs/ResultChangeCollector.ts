@@ -1,9 +1,14 @@
+import BaseType from 'renderer/datatype/BaseType';
+
 export interface ResultChangeCollectorItem {
   row: number;
-  cols: { col: number; value: unknown }[];
+  cols: { col: number; value: BaseType }[];
 }
 
-export type ResultChangeEventHandler = (count: number) => void;
+export type ResultChangeEventHandler = (
+  count: number,
+  revision: number,
+) => void;
 
 export interface ResultChanges {
   new: ResultChangeCollectorItem[];
@@ -17,8 +22,9 @@ export interface ResultChanges {
 export default class ResultChangeCollector {
   protected newRowCount = 0;
   protected removedRowIndex = new Set<number>();
-  protected changes: Record<string, Record<string, unknown>> = {};
+  protected changes: Record<string, Record<string, BaseType>> = {};
   protected onChangeListeners: ResultChangeEventHandler[] = [];
+  protected revision = 0;
 
   registerChange(cb: ResultChangeEventHandler) {
     this.onChangeListeners.push(cb);
@@ -30,14 +36,22 @@ export default class ResultChangeCollector {
 
   protected triggerOnChange() {
     const count = this.getChangesCount();
+    this.revision++;
     for (const cb of this.onChangeListeners) {
-      cb(count);
+      cb(count, this.revision);
     }
   }
 
   removeRow(rowNumber: number) {
     if (rowNumber < 0) {
-      // Remove the new created row.
+      if (rowNumber < -this.newRowCount) return;
+
+      // Shifting the new row changed
+      for (let i = rowNumber; i >= -this.newRowCount; i--) {
+        this.changes[i] = this.changes[i - 1];
+      }
+      delete this.changes[-this.newRowCount];
+      this.newRowCount--;
     } else {
       // Remove the existing row. We just mark it as removed
       this.removedRowIndex.add(rowNumber);
@@ -61,12 +75,21 @@ export default class ResultChangeCollector {
     this.triggerOnChange();
   }
 
-  createNewRow() {
-    this.newRowCount++;
+  createNewRow(initialData?: BaseType[]) {
+    const newId = -++this.newRowCount;
+    if (initialData) {
+      this.changes[newId] = {};
+
+      for (let i = 0; i < initialData.length; i++) {
+        this.changes[newId][i] = initialData[i];
+      }
+    }
     this.triggerOnChange();
+
+    return newId;
   }
 
-  addChange(rowNumber: number, cellNumber: number, value: unknown) {
+  addChange(rowNumber: number, cellNumber: number, value: BaseType) {
     if (!this.changes[rowNumber]) {
       this.changes[rowNumber] = {};
     }
@@ -85,7 +108,7 @@ export default class ResultChangeCollector {
   getChange<T>(
     rowNumber: number,
     cellNumber: number,
-    defaultValue: T | undefined | null = undefined
+    defaultValue: T | undefined | null = undefined,
   ) {
     if (this.changes[rowNumber] !== undefined) {
       if (this.changes[rowNumber][cellNumber] !== undefined) {

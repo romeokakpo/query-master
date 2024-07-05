@@ -9,6 +9,16 @@
   &:hover {
     opacity: 0.8;
   }
+
+  display: inline-flex;
+
+  align-items: center;
+
+
+  span {
+    display: block;
+    white-space: nowrap;
+  }
 }
 
 .plain {
@@ -35,4 +45,18 @@
 .destructive {
   background: var(--color-critical);
   color: var(--color-primary-text);
+}
+
+.icon {
+  margin-right: 10px;
+
+  svg {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+.full {
+  width: 100%;
+  display: flex;
 }

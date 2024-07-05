@@ -1,10 +1,18 @@
-import { ReactElement, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ReactElement,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import styles from './styles.module.scss';
 import Icon from '../Icon';
 import { useAppFeature } from 'renderer/contexts/AppFeatureProvider';
 
 interface ListViewItemProps {
   text: string;
+  subtitle?: string;
   draggable?: boolean;
   highlight?: string;
   icon?: ReactElement;
@@ -14,7 +22,10 @@ interface ListViewItemProps {
   onDoubleClick?: () => void;
   onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void;
   onDragOver?: (e: React.DragEvent<HTMLDivElement>) => void;
-  onDrop?: (e: React.DragEvent<HTMLDivElement>) => void;
+  onDrop?: (
+    e: React.DragEvent<HTMLDivElement>,
+    position: 'top' | 'bottom',
+  ) => void;
   onContextMenu?: React.MouseEventHandler<HTMLDivElement>;
 
   renaming?: boolean;
@@ -36,6 +47,7 @@ function encodeStringToHTML(s: string) {
 
 export default function ListViewItem({
   text,
+  subtitle,
   highlight,
   icon,
   selected,
@@ -58,6 +70,9 @@ export default function ListViewItem({
 }: ListViewItemProps) {
   const { theme } = useAppFeature();
   const [renameDraftValue, setRenameDraftValue] = useState('');
+  const [dropSide, setDropSide] = useState<'none' | 'top' | 'bottom'>('none');
+  const large = !!subtitle;
+  const ref = useRef(null);
 
   useEffect(() => {
     setRenameDraftValue(text);
@@ -67,7 +82,7 @@ export default function ListViewItem({
     (value: string | null) => {
       if (onRenamed) onRenamed(value);
     },
-    [onRenamed]
+    [onRenamed],
   );
 
   const finalText = useMemo(() => {
@@ -76,12 +91,12 @@ export default function ListViewItem({
       const santizedText = encodeStringToHTML(text || '');
       const regex = new RegExp(
         '(' + highlightText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')',
-        'i'
+        'i',
       );
 
       return santizedText.replace(
         regex,
-        `<mark style="padding: 0; background-color: #047bf8; color: white">$1</mark>`
+        `<mark style="padding: 0; background-color: #047bf8; color: white">$1</mark>`,
       );
     } else {
       return encodeStringToHTML(text || '');
@@ -90,10 +105,14 @@ export default function ListViewItem({
 
   return (
     <div
+      ref={ref}
       className={[
         styles.item,
         selected ? styles.selected : styles.hover,
         changed ? styles.changed : undefined,
+        large ? styles.large : undefined,
+        dropSide === 'bottom' ? styles.dropBottom : undefined,
+        dropSide === 'top' ? styles.dropTop : undefined,
       ]
         .filter(Boolean)
         .join(' ')}
@@ -101,9 +120,20 @@ export default function ListViewItem({
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
       draggable={draggable}
-      onDragOver={onDragOver}
+      onDragOver={(e) => {
+        if (onDragOver) onDragOver(e);
+        const side = e.nativeEvent.offsetY > 10 ? 'bottom' : 'top';
+        if (dropSide !== side) setDropSide(side);
+      }}
+      onDragLeave={() => {
+        if (dropSide !== 'none') setDropSide('none');
+      }}
       onDragStart={onDragStart}
-      onDrop={onDrop}
+      onDrop={(e) => {
+        const side = e.nativeEvent.offsetY > 10 ? 'bottom' : 'top';
+        if (onDrop) onDrop(e, side);
+        setDropSide('none');
+      }}
     >
       {!!depth &&
         new Array(depth)
@@ -115,7 +145,9 @@ export default function ListViewItem({
         (collapsed ? (
           <div
             className={
-              theme === 'dark' ? `${styles.icon} ${styles.dark}` : styles.icon
+              theme === 'dark'
+                ? `${styles.action} ${styles.dark}`
+                : styles.action
             }
             onClick={onCollapsedClick}
           >
@@ -124,39 +156,44 @@ export default function ListViewItem({
         ) : (
           <div
             className={
-              theme === 'dark' ? `${styles.icon} ${styles.dark}` : styles.icon
+              theme === 'dark'
+                ? `${styles.action} ${styles.dark}`
+                : styles.action
             }
             onClick={onCollapsedClick}
           >
             <Icon.Right />
           </div>
         ))}
-      {!hasCollapsed && <div className={styles.icon}>{icon}</div>}
-      {renaming ? (
-        <div className={styles.text}>
-          <input
-            autoFocus
-            onBlur={() => {
-              onRenameDone(renameDraftValue);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
+      {icon && <div className={styles.icon}>{icon}</div>}
+      <div>
+        {renaming ? (
+          <div className={styles.text}>
+            <input
+              autoFocus
+              onBlur={() => {
                 onRenameDone(renameDraftValue);
-              } else if (e.key === 'Escape') {
-                onRenameDone(null);
-              }
-            }}
-            type="text"
-            value={renameDraftValue}
-            onChange={(e) => setRenameDraftValue(e.currentTarget.value)}
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  onRenameDone(renameDraftValue);
+                } else if (e.key === 'Escape') {
+                  onRenameDone(null);
+                }
+              }}
+              type="text"
+              value={renameDraftValue}
+              onChange={(e) => setRenameDraftValue(e.currentTarget.value)}
+            />
+          </div>
+        ) : (
+          <div
+            className={styles.text}
+            dangerouslySetInnerHTML={{ __html: finalText }}
           />
-        </div>
-      ) : (
-        <div
-          className={styles.text}
-          dangerouslySetInnerHTML={{ __html: finalText }}
-        />
-      )}
+        )}
+        {subtitle && <div className={styles.subtitle}>{subtitle}</div>}
+      </div>
     </div>
   );
 }

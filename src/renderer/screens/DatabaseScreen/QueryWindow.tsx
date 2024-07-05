@@ -1,6 +1,6 @@
 import { ReactCodeMirrorRef } from '@uiw/react-codemirror';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlay, faICursor } from '@fortawesome/free-solid-svg-icons';
+import { faPlay, faICursor, faSave } from '@fortawesome/free-solid-svg-icons';
 import { format } from 'sql-formatter';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import styles from './styles.module.scss';
@@ -13,13 +13,15 @@ import QueryMultipleResultViewer from './QueryMultipleResultViewer';
 import { useContextMenu } from 'renderer/contexts/ContextMenuProvider';
 import { useDialog } from 'renderer/contexts/DialogProvider';
 import SqlCodeEditor from 'renderer/components/CodeEditor/SqlCodeEditor';
-import QueryWindowNameEditor from './QueryWindowNameEditor';
 import Stack from 'renderer/components/Stack';
 import { useWindowTab } from 'renderer/contexts/WindowTabProvider';
 import QueryResultLoading from './QueryResultViewer/QueryResultLoading';
-import { transformResultHeaderUseSchema } from 'libs/TransformResult';
 import { SqlStatementResult } from 'libs/SqlRunnerManager';
 import { EditorState } from '@codemirror/state';
+import { useSavedQueryPubSub } from './SavedQueryProvider';
+import { useKeybinding } from 'renderer/contexts/KeyBindingProvider';
+import { useCurrentTab } from 'renderer/components/WindowTab';
+import { QueryTypedResult } from 'types/SqlResult';
 
 export type EnumSchema = Array<{
   table: string;
@@ -30,25 +32,32 @@ export type EnumSchema = Array<{
 interface QueryWindowProps {
   initialSql?: string;
   initialRun?: boolean;
-  tabKey: string;
-  name: string;
 }
 
 export default function QueryWindow({
   initialSql,
   initialRun,
-  tabKey,
 }: QueryWindowProps) {
   const editorRef = useRef<ReactCodeMirrorRef>(null);
 
+  const { binding } = useKeybinding();
+  const keyRunQuery = binding['run-query'];
+  const keyRunCurrentQuery = binding['run-current-query'];
+  const keySaveQuery = binding['save-query'];
+
   const [loading, setLoading] = useState(false);
   const [queryKeyCounter, setQueryKeyCounter] = useState(0);
-  const [result, setResult] = useState<SqlStatementResult[]>([]);
+  const [result, setResult] = useState<SqlStatementResult<QueryTypedResult>[]>(
+    [],
+  );
+  const { publish } = useSavedQueryPubSub();
 
-  const { runner } = useSqlExecute();
+  const { runner, common } = useSqlExecute();
   const { showErrorDialog } = useDialog();
-  const { schema, currentDatabase } = useSchema();
+  const { schema, currentDatabase, dialect } = useSchema();
   const { selectedTab, setTabData, saveWindowTabHistory } = useWindowTab();
+
+  const { tabName, tabKey } = useCurrentTab();
 
   const [code, setCode] = useState(initialSql || '');
 
@@ -64,7 +73,11 @@ export default function QueryWindow({
         onClick: () => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const codeFromRef: string = (viewState?.doc as any).text.join('\r');
-          setCode(format(codeFromRef));
+          setCode(
+            format(codeFromRef, {
+              language: dialect === 'mysql' ? 'mysql' : 'postgresql',
+            }),
+          );
         },
         separator: true,
       },
@@ -74,7 +87,7 @@ export default function QueryWindow({
         onClick: () => {
           if (viewState) {
             window.navigator.clipboard.writeText(
-              viewState.sliceDoc(selectFrom, selectTo)
+              viewState.sliceDoc(selectFrom, selectTo),
             );
             view.dispatch({
               changes: { from: selectFrom, to: selectTo, insert: '' },
@@ -90,7 +103,7 @@ export default function QueryWindow({
         onClick: () => {
           if (viewState) {
             window.navigator.clipboard.writeText(
-              viewState.sliceDoc(selectFrom, selectTo)
+              viewState.sliceDoc(selectFrom, selectTo),
             );
             view.focus();
           }
@@ -111,7 +124,7 @@ export default function QueryWindow({
         },
       },
     ];
-  }, [editorRef, setCode]);
+  }, [editorRef, setCode, dialect]);
 
   const getSelection = useCallback(() => {
     const es = editorRef.current?.view?.state as EditorState;
@@ -124,6 +137,12 @@ export default function QueryWindow({
     return editorRef.current.view?.state.doc.toString() || '';
   }, []);
 
+  const savedQuery = useCallback(() => {
+    if (tabKey) {
+      publish({ id: tabKey, name: tabName, sql: getText() });
+    }
+  }, [getText, tabName, tabKey]);
+
   const executeSql = useCallback(
     (code: string, skipProtection?: boolean) => {
       saveWindowTabHistory();
@@ -135,10 +154,10 @@ export default function QueryWindow({
           {
             onStart: () => setLoading(true),
             skipProtection,
-          }
+          },
         )
         .then((r) => {
-          setResult(transformResultHeaderUseSchema(r, schema));
+          setResult(common.attachHeaders(r, schema));
           setQueryKeyCounter((prev) => prev + 1);
         })
         .catch((e) => {
@@ -150,7 +169,7 @@ export default function QueryWindow({
           setLoading(false);
         });
     },
-    [runner, setResult, schema, setLoading, saveWindowTabHistory]
+    [runner, setResult, schema, setLoading, saveWindowTabHistory, common],
   );
 
   const onRun = useCallback(
@@ -158,15 +177,15 @@ export default function QueryWindow({
       if (!editorRef.current || sqlCode === '') return;
       executeSql(sqlCode);
     },
-    [executeSql, editorRef]
+    [executeSql, editorRef],
   );
 
   useEffect(() => {
     if (selectedTab === tabKey) {
       const onKeyBinding = (e: KeyboardEvent) => {
-        if (e.ctrlKey && e.key === 'F9') {
+        if (keyRunCurrentQuery.match(e)) {
           onRun(getSelection());
-        } else if (e.key === 'F9') {
+        } else if (keyRunQuery.match(e)) {
           onRun(getText());
         }
       };
@@ -174,7 +193,7 @@ export default function QueryWindow({
       document.addEventListener('keydown', onKeyBinding);
       return () => document.removeEventListener('keydown', onKeyBinding);
     }
-  }, [onRun, selectedTab, tabKey]);
+  }, [onRun, selectedTab, tabKey, keyRunCurrentQuery, keyRunQuery]);
 
   useEffect(() => {
     if (initialRun && initialSql) {
@@ -192,39 +211,11 @@ export default function QueryWindow({
   }, [tabKey, setTabData, initialSql]);
 
   return (
-    <Splitter vertical primaryIndex={1} secondaryInitialSize={200}>
+    <Splitter vertical primaryIndex={1} secondaryInitialSize={300}>
       <div className={styles.queryContainer}>
-        <div>
-          <Stack spacing="none">
-            <QueryWindowNameEditor tabKey={tabKey} />
-            <Toolbar>
-              <Toolbar.Item
-                icon={<FontAwesomeIcon icon={faPlay} />}
-                text="Run (F9)"
-                onClick={() => onRun(getText())}
-              />
-              <Toolbar.Item
-                icon={
-                  <Stack spacing="none" center>
-                    <FontAwesomeIcon
-                      icon={faPlay}
-                      style={{ paddingRight: 3 }}
-                    />
-                    <FontAwesomeIcon
-                      icon={faICursor}
-                      style={{ height: 11, color: 'black' }}
-                    />
-                  </Stack>
-                }
-                text="Run Selection (Ctrl + F9)"
-                onClick={() => onRun(getSelection())}
-              />
-            </Toolbar>
-          </Stack>
-        </div>
-
         <div className={styles.queryEditor}>
           <SqlCodeEditor
+            dialect={dialect}
             ref={editorRef}
             onContextMenu={handleContextMenu}
             style={{ fontSize: 20, height: '100%' }}
@@ -233,10 +224,49 @@ export default function QueryWindow({
               setCode(newCode);
               setTabData(tabKey, { sql: newCode, type: 'query' });
             }}
+            onKeyDown={(e) => {
+              if (keySaveQuery.match(e)) {
+                savedQuery();
+              }
+            }}
             height="100%"
             schema={schema}
             currentDatabase={currentDatabase}
           />
+        </div>
+
+        <div>
+          <Toolbar>
+            <Toolbar.Item
+              icon={<FontAwesomeIcon icon={faPlay} color="#27ae60" />}
+              text="Run"
+              keyboard={keyRunQuery.toString()}
+              onClick={() => onRun(getText())}
+            />
+            <Toolbar.Item
+              icon={
+                <Stack spacing="none" center>
+                  <FontAwesomeIcon
+                    icon={faPlay}
+                    style={{ paddingRight: 3 }}
+                    color="#27ae60"
+                  />
+                  <FontAwesomeIcon icon={faICursor} style={{ height: 11 }} />
+                </Stack>
+              }
+              text="Run Selection"
+              keyboard={keyRunCurrentQuery.toString()}
+              onClick={() => onRun(getSelection())}
+            />
+            <Toolbar.Separator />
+            <Toolbar.Item
+              text="Save"
+              keyboard={keySaveQuery.toString()}
+              onClick={savedQuery}
+              primary
+              icon={<FontAwesomeIcon icon={faSave} color={'inherit'} />}
+            />
+          </Toolbar>
         </div>
       </div>
       <div style={{ height: '100%' }}>

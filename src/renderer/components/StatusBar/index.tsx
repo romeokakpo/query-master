@@ -14,7 +14,7 @@ function StatusBarAutoUpdate() {
 
   useEffect(() => {
     window.electron.listenCheckingForUpdate(() =>
-      setAutoUpdateMessage('Checking for update...')
+      setAutoUpdateMessage('Checking for update...'),
     );
 
     window.electron.listenUpdateNotAvailable(() => {
@@ -33,7 +33,6 @@ function StatusBarAutoUpdate() {
     });
 
     window.electron.checkForUpdates();
-    console.log('Check for update');
   }, [setAutoUpdateMessage, setDownloadCompleted, setShowUpdateModal]);
 
   if (downloadCompleted) {
@@ -99,10 +98,8 @@ export default function StatusBar() {
   return (
     <div className={styles.statusBarContainer}>
       <ul>
-        <li>QueryMaster v{pkg.version}</li>
-        {!!connectionStatus?.version && (
-          <li>MySQL {connectionStatus?.version}</li>
-        )}
+        <li>Querym v{pkg.version}</li>
+        {!!connectionStatus?.version && <li>{connectionStatus?.version}</li>}
         {!!connectionStatus?.status && (
           <li>
             <span
